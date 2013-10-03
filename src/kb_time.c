@@ -71,7 +71,8 @@ static void gptcb(GPTDriver *gptp)
 
 static const GPTConfig gptcfg = {
 	84000000,
-	gptcb
+	gptcb,
+	0
 };
 
 
