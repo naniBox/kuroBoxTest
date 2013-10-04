@@ -1,0 +1,11 @@
+# Object files
+*.o
+*.lst
+
+# Libraries
+*.lib
+*.a
+
+# build stuff
+/.dep
+

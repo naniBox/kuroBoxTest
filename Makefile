@@ -61,7 +61,7 @@ endif
 #
 
 # Define project name here
-PROJECT = kuroBoxTest
+PROJECT = kuroBox_TimeTest
 
 # Imported source files and paths
 CHIBIOS = ../../chibios
