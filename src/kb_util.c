@@ -37,6 +37,9 @@ calc_checksum_8( uint8_t * buf, uint16_t buf_size )
 }
 
 //-----------------------------------------------------------------------------
+// the 8 bit fletcher algorithm (from uBlox datasheet)
+// http://www.ietf.org/rfc/rfc1145.txt
+// http://en.wikipedia.org/wiki/Fletcher's_checksum
 uint16_t
 calc_checksum_16( uint8_t * buf, uint16_t buf_size )
 {

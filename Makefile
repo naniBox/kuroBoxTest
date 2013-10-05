@@ -3,10 +3,16 @@
 # NOTE: Can be overridden externally.
 #
 
+DEBUG_BUILD = yes
+USE_RELOCATED_FLASH = yes
+
 # Compiler options here.
 ifeq ($(USE_OPT),)
-  USE_OPT = -O2 -fomit-frame-pointer -falign-functions=16 -std=gnu99
-#  USE_OPT = -O0 -ggdb -fomit-frame-pointer -falign-functions=16 -std=gnu99
+ifeq ($(DEBUG_BUILD),yes)
+  USE_OPT = -O0 -ggdb -fomit-frame-pointer -falign-functions=16 -std=gnu99
+else
+  USE_OPT = -Os -fomit-frame-pointer -falign-functions=16 -std=gnu99
+endif
 endif
 
 # C specific options here (added to USE_OPT).
@@ -47,6 +53,12 @@ ifeq ($(USE_FWLIB),)
   USE_FWLIB = no
 endif
 
+# If relocating to 0x08020000 : 128kb in
+ifeq ($(USE_RELOCATED_FLASH),)
+	#USE_RELOCATED_FLASH = yes
+	USE_RELOCATED_FLASH = no
+endif
+
 # we want FPU, please
 ifeq ($(USE_FPU),)
   USE_FPU = yes
@@ -61,7 +73,11 @@ endif
 #
 
 # Define project name here
-PROJECT = kuroBox_TimeTest
+ifeq ($(USE_RELOCATED_FLASH),yes)
+	PROJECT = kuroBox_TimeTest_relocated
+else
+	PROJECT = kuroBox_TimeTest
+endif
 
 # Imported source files and paths
 CHIBIOS = ../../chibios
@@ -70,10 +86,14 @@ include $(CHIBIOS)/os/hal/platforms/STM32F4xx/platform.mk
 include $(CHIBIOS)/os/hal/hal.mk
 include $(CHIBIOS)/os/ports/GCC/ARMCMx/STM32F4xx/port.mk
 include $(CHIBIOS)/os/kernel/kernel.mk
-include $(KUROBOX)/src/cfg/board.mk
+include $(KUROBOX)/src/board/board.mk
 
 # Define linker script file here
-LDSCRIPT= $(PORTLD)/STM32F407xG.ld
+ifeq ($(USE_RELOCATED_FLASH),yes)
+	LDSCRIPT= ./STM32F407xG_OFFSET.ld
+else
+	LDSCRIPT= $(PORTLD)/STM32F407xG.ld
+endif
 
 # C sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
@@ -86,13 +106,12 @@ CSRC = $(PORTSRC) \
         $(CHIBIOS)/os/various/chprintf.c \
         $(CHIBIOS)/os/various/chrtclib.c \
         $(CHIBIOS)/os/various/memstreams.c \
-        ./src/kb_debug.c \
-        ./src/kb_time.c \
         ./src/kb_buttons.c \
-        ./src/kb_gps.c \
+        ./src/kb_debug.c \
         ./src/kb_util.c \
         ./src/glcdfont.c \
         ./src/main.c \
+        ./src/spiEEPROM.c \
         ./src/ST7565.c
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
@@ -178,7 +197,11 @@ CPPWARN = -Wall -Wextra
 #
 
 # List all default C defines here, like -D_DEBUG=1
-DDEFS =
+ifeq ($(DEBUG_BUILD),yes)
+	DDEFS = -D_DEBUG=1
+else
+	DDEFS = 
+endif
 
 # List all default ASM defines here, like -D_DEBUG=1
 DADEFS =
@@ -224,6 +247,10 @@ ifeq ($(USE_FPU),yes)
   DDEFS += -DCORTEX_USE_FPU=TRUE
 else
   DDEFS += -DCORTEX_USE_FPU=FALSE
+endif
+
+ifeq ($(USE_RELOCATED_FLASH),yes)
+	DDEFS += -DRELOCATED_FLASH=TRUE
 endif
 
 ifeq ($(USE_FWLIB),yes)

@@ -27,18 +27,34 @@
 #include <memstreams.h>
 #include <chrtclib.h>
 #include <time.h>
+#include <math.h>
+#include "spiEEPROM.h"
 #include "ST7565.h"
 #include "kb_buttons.h"
-#include "kb_time.h"
-#include "kb_gps.h"
+#include "kb_gpio.h"
 
 //-----------------------------------------------------------------------------
-// static data
-static uint8_t lcd_buffer[ST7565_BUFFER_SIZE];
-extern struct smpte_timecode_t ltc_timecode;
-extern uint32_t gps_pps;
-extern uint32_t gps_pps_diffCount;
-extern uint32_t real_seconds;
+#define FACTORY_CONFIG_MAGIC				0x426b426e	// nBkB ;)
+#define FACTORY_CONFIG_VERSION				0x01010101
+typedef struct factory_config_t factory_config_t;
+struct __PACKED__ factory_config_t
+{
+	uint32_t preamble;
+	uint32_t version;
+	uint16_t checksum;
+	uint32_t serial_number;
+	uint32_t tcxo_compensation;
+	uint32_t rtc_compensation;
+	uint8_t __pad[SPIEEPROM_PAGE_SIZE - (4+4+4+2+4+4)];
+
+};
+STATIC_ASSERT(sizeof(factory_config_t)==SPIEEPROM_PAGE_SIZE, SPIEEPROM_PAGE_SIZE);
+factory_config_t factory_config;
+
+//-----------------------------------------------------------------------------
+// forward declarations
+static void gptcb(GPTDriver *gptp);
+static void gps_timepulse(EXTDriver *extp, expchannel_t channel);
 
 //-----------------------------------------------------------------------------
 static SerialConfig serial1_cfg = {
@@ -50,10 +66,21 @@ static SerialConfig serial1_cfg = {
 
 //-----------------------------------------------------------------------------
 static SerialConfig serial2_cfg = {
-	SERIAL_DEFAULT_BITRATE,
+	230400,
 	0,
 	USART_CR2_STOP1_BITS | USART_CR2_LINEN,
 	0
+};
+
+//-----------------------------------------------------------------------------
+static const spiEepromConfig eeprom_cfg =
+{
+	{	// SPIConfig struct
+		NULL,			// callback
+		GPIOE,
+		GPIOE_EEPROM_NSS,
+		SPI_CR1_BR_2 | SPI_CR1_CPOL | SPI_CR1_CPHA
+	}
 };
 
 //-----------------------------------------------------------------------------
@@ -76,13 +103,13 @@ static const EXTConfig extcfg = {
 	{EXT_CH_MODE_BOTH_EDGES | EXT_CH_MODE_AUTOSTART | EXT_MODE_GPIOA, btn_1_exti_cb},	// 1
 
     {EXT_CH_MODE_DISABLED, NULL},	// 2
-	{EXT_CH_MODE_FALLING_EDGE | EXT_CH_MODE_AUTOSTART | EXT_MODE_GPIOC, gps_timepulse_exti_cb},	// 3
+	{EXT_CH_MODE_FALLING_EDGE | EXT_CH_MODE_AUTOSTART | EXT_MODE_GPIOC, gps_timepulse},	// 3
     {EXT_CH_MODE_DISABLED, NULL},	// 4
     {EXT_CH_MODE_DISABLED, NULL},	// 5
     {EXT_CH_MODE_DISABLED, NULL},	// 6
     {EXT_CH_MODE_DISABLED, NULL},	// 7
     {EXT_CH_MODE_DISABLED, NULL},	// 8
-	{EXT_CH_MODE_BOTH_EDGES | EXT_CH_MODE_AUTOSTART | EXT_MODE_GPIOA, ltc_exti_cb},	// 9
+    {EXT_CH_MODE_DISABLED, NULL},	// 9
     {EXT_CH_MODE_DISABLED, NULL},	// 10
     {EXT_CH_MODE_DISABLED, NULL},	// 11
     {EXT_CH_MODE_DISABLED, NULL},	// 12
@@ -100,12 +127,64 @@ static const EXTConfig extcfg = {
 };
 
 //-----------------------------------------------------------------------------
+static const GPTConfig gptcfg = {
+	84000000,
+	gptcb,
+	0
+};
+
+//-----------------------------------------------------------------------------
+// static data
+static uint8_t lcd_buffer[ST7565_BUFFER_SIZE];
+volatile bool_t pps_changed;
+volatile uint32_t pps_diff;
+volatile uint32_t pps_time;
+volatile uint32_t pps;
+
+static char charbuf[128];
+static MemoryStream msb;
+#define INIT_CBUF() \
+	memset(charbuf,0,sizeof(charbuf));\
+	msObjectInit(&msb, (uint8_t*)charbuf, 128, 0);
+#define bss ((BaseSequentialStream *)&msb)
+#define prnt ((BaseSequentialStream *)&SD2)
+#define PASSES 3600*6	// 6 hours
+//#define PASSES 3600	// 1 hour
+//#define PASSES 10
+
+// we store the times so we can extract meaningful data at the end
+uint32_t times[PASSES];
+
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+static void gptcb(GPTDriver *gptp)
+{
+	(void)gptp;
+}
+
+//-----------------------------------------------------------------------------
+static void
+gps_timepulse(EXTDriver *extp, expchannel_t channel)
+{
+	(void)extp;
+	(void)channel;
+
+	uint32_t b = halGetCounterValue();
+	pps_diff = b-pps_time;
+	pps_time = b;
+	pps_changed = TRUE;
+	pps++;
+	kbg_toggleLED2();
+}
+
+//-----------------------------------------------------------------------------
 int
 kuroBoxInit(void)
 {
-	palSetPad(GPIOB, GPIOB_LED1);
-	palSetPad(GPIOB, GPIOB_LED2);
-	palSetPad(GPIOA, GPIOA_LED3);
+	kbg_setLED1(1);
+	kbg_setLED2(1);
+	kbg_setLED3(1);
 
 	// Serial
 	sdStart(&SD1, &serial1_cfg);
@@ -117,21 +196,27 @@ kuroBoxInit(void)
 	memset(lcd_buffer, 0, sizeof(lcd_buffer));
 	st7565Start(&ST7565D1, &lcd_cfg, &SPID1, lcd_buffer);
 
-	// gps uart
-	kuroBoxGPSInit();
+	// EEPROM
+	spiEepromStart(&spiEepromD1, &eeprom_cfg, &SPID1);
+
+	// this turns on Layer 1 power, this turns on the mosfets controlling the
+	// VCC rail. After this, we can start GPS, VectorNav and altimeter
+	kbg_setL1PowerOn();
+
+	// wait for it to stabilise, poweron devices, and let them start before continuing
+	chThdSleepMilliseconds(500);
 
 	// set initial button state.
 	kuroBoxButtonsInit();
 
-	// LTC's, though this is now driven purely through interrupts, and it's
-	// VERY quick
-	kuroBoxTimeInit();
+	gptStart(&GPTD2, &gptcfg);
+	gptStartContinuous(&GPTD2, 84000000);
 
 	// indicate we're ready
 	chThdSleepMilliseconds(100);
-	palClearPad(GPIOB, GPIOB_LED1);
-	palClearPad(GPIOB, GPIOB_LED2);
-	palClearPad(GPIOA, GPIOA_LED3);
+	kbg_setLED1(0);
+	kbg_setLED2(0);
+	kbg_setLED3(0);
 
 	// all external interrupts, all the system should now be ready for it
 	extStart(&EXTD1, &extcfg);
@@ -140,99 +225,203 @@ kuroBoxInit(void)
 }
 
 //-----------------------------------------------------------------------------
-int main(void) 
+static void
+config_print(void)
+{
+	chprintf(prnt, "Config:\n");
+	chprintf(prnt, "  Preamble : 0x%.8X\n", factory_config.preamble);
+	chprintf(prnt, "  Version  : 0x%.8X\n", factory_config.version);
+	chprintf(prnt, "  Checksum : 0x%.4X\n", factory_config.checksum);
+	chprintf(prnt, "  TCXO     : %d\n",     factory_config.tcxo_compensation);
+	chprintf(prnt, "  RTC      : %d\n",     factory_config.rtc_compensation);
+}
+
+//-----------------------------------------------------------------------------
+static void
+config_read(void)
+{
+	uint8_t * eeprombuf = (uint8_t*) &factory_config;
+	while( spiEepromWIP(&spiEepromD1) )
+	{}
+	spiEepromReadPage(&spiEepromD1, 0, eeprombuf);
+
+	chprintf(prnt, "Config read\n");
+}
+
+//-----------------------------------------------------------------------------
+static void
+config_write(void)
+{
+	uint8_t * eeprombuf = (uint8_t*) &factory_config;
+	spiEepromEnableWrite(&spiEepromD1);
+	spiEepromWritePage(&spiEepromD1, 0, eeprombuf);
+
+	volatile uint32_t count = 0;
+	while( spiEepromWIP(&spiEepromD1) ) {count++;}
+	spiEepromDisableWrite(&spiEepromD1);
+
+	chprintf(prnt, "Config written\n");
+}
+
+//-----------------------------------------------------------------------------
+static int32_t
+tcxo_calibration(void)
+{
+
+	// wait X seconds to make sure the logger has started up...
+	pps = 0;
+	while (pps < 5)
+	{
+		st7565_clear(&ST7565D1);
+		st7565_drawstring(&ST7565D1, 0, 0, "TCXO vs GPS TEST");
+		INIT_CBUF();
+		chprintf(bss, "Waiting on GPS: %d", 5-pps);
+		st7565_drawstring(&ST7565D1, 0, 1, charbuf);
+		st7565_display(&ST7565D1);
+		chThdSleepMilliseconds(50);
+	}
+
+	kbg_setLED2(0);
+
+	//--------------------------------------------------------------------------
+	// doing the XTAL run first
+
+	st7565_clear(&ST7565D1);
+	chprintf(prnt, "pass,PASSES,pps_diff,diff_from_parity\n");
+
+	for ( uint32_t pass = 0 ; pass < PASSES ; )
+	{
+		chThdSleepMilliseconds(50);
+		if ( pps_changed )
+		{
+			kbg_setLED1(1);
+			times[pass] = pps_diff;
+			// this may be negative!
+			int32_t diff_from_parity = 168000000 - pps_diff;
+			chprintf(prnt, "%6d,%6d,%14d,%14d\n", pass, PASSES, pps_diff, diff_from_parity);
+			pps_changed = FALSE;
+			pass++;
+
+			st7565_drawstring(&ST7565D1, 0, 0, "TCXO vs GPS TEST");
+
+			INIT_CBUF();
+			chprintf(bss,"Doing %d passes", PASSES);
+			st7565_drawstring(&ST7565D1, 0, 1, charbuf);
+
+			INIT_CBUF();
+			chprintf(bss,"Pass: %d", pass);
+			st7565_drawstring(&ST7565D1, 0, 2, charbuf);
+
+			INIT_CBUF();
+			chprintf(bss,"Time diff: %d", diff_from_parity);
+			st7565_drawstring(&ST7565D1, 0, 3, charbuf);
+
+			st7565_display(&ST7565D1);
+			st7565_clear(&ST7565D1);
+
+			chThdSleepMilliseconds(10);
+			kbg_setLED1(0);
+		}
+	}
+
+	int32_t max = -2147483647;
+	int32_t min = 2147483647;
+	int32_t avg = 0;
+	for ( uint32_t pass = 0 ; pass < PASSES ; pass++ )
+	{
+		int32_t t = (168000000 - times[pass]);
+		if ( max < t ) max = t;
+		if ( min > t ) min = t;
+		avg += 168000000 - times[pass];
+	}
+	avg /= PASSES;
+
+	uint32_t std_dev = 0;
+	for ( uint32_t pass = 0 ; pass < PASSES ; pass++ )
+	{
+		int32_t diff = avg - (168000000 - times[pass]);
+		std_dev += diff*diff;
+	}
+	std_dev = sqrt(std_dev / PASSES);
+
+	chprintf(prnt, "Time differences\n");
+	chprintf(prnt, "\tAverage = %d (TCXO is %s)\n", avg, avg<0?"slower":"faster");
+	chprintf(prnt, "\tMin     = %d\n", min);
+	chprintf(prnt, "\tMax     = %d\n", max);
+	chprintf(prnt, "\tStdDev  = %d\n", std_dev);
+
+	//--------------------------------------------------------------------------
+
+	st7565_drawstring(&ST7565D1, 0, 0, "FINISHED TCXO vs GPS");
+
+	INIT_CBUF();
+	chprintf(bss,"Passes: %d", PASSES);
+	st7565_drawstring(&ST7565D1, 0, 1, charbuf);
+
+	INIT_CBUF();
+	chprintf(bss,"Average: %d (%s)", avg, avg<0?"slower":"faster");
+	st7565_drawstring(&ST7565D1, 0, 2, charbuf);
+
+	INIT_CBUF();
+	chprintf(bss,"-+S: %d, %d, %d", min, max, std_dev);
+	st7565_drawstring(&ST7565D1, 0, 3, charbuf);
+
+	st7565_display(&ST7565D1);
+	st7565_clear(&ST7565D1);
+
+	return avg;
+}
+
+//-----------------------------------------------------------------------------
+int main(void)
 {
 	halInit();
 	chSysInit();
 	kuroBoxInit();
+	chprintf(prnt, "Starting...\n");
+	kbg_setLCDBacklight(1);
 
-	// wait X seconds to make sure the logger has started up...
-	chThdSleepMilliseconds(2000);
+	config_read();
+	config_print();
 
-	BaseSequentialStream * prnt = (BaseSequentialStream *)&SD1;
-	static char charbuf[128];
-	static MemoryStream msb;
-	#define INIT_CBUF() \
-		memset(charbuf,0,sizeof(charbuf));\
-		msObjectInit(&msb, (uint8_t*)charbuf, 128, 0);
-	BaseSequentialStream * bss = (BaseSequentialStream *)&msb;
+	int32_t tcxo_avg = tcxo_calibration();
+
+	//--------------------------------------------------------------------------
+	// writing these things out now to EEPROM for factory settings
+	memset(&factory_config, 0, sizeof(factory_config));
+	factory_config.preamble = FACTORY_CONFIG_MAGIC;
+	factory_config.version = FACTORY_CONFIG_VERSION;
+	factory_config.tcxo_compensation = tcxo_avg;
+	factory_config.rtc_compensation = 0; // @TODO: implement this!
+	factory_config.checksum = calc_checksum_16((uint8_t*)&factory_config, sizeof(factory_config));
+
+	config_write();
+	config_print();
+
+	chprintf(prnt, "Written to EEPROM!\n");
+
+	//--------------------------------------------------------------------------
+	// endless loop to say we've finished
+	while(1)
+	{
+		kbg_setLED1(0);
+		kbg_setLED2(0);
+		kbg_setLED3(0);
+		chThdSleepMilliseconds(200);
+		kbg_setLED1(1);
+		kbg_setLED2(1);
+		kbg_setLED3(1);
+		chThdSleepMilliseconds(200);
+	}
+
+#if 0
 
 	struct RTCTime rtc0;
-	struct RTCTime rtc1;
 	rtcGetTimeI(&RTCD1, &rtc0);
-	rtcGetTimeI(&RTCD1, &rtc1);
-
-	uint32_t rss0 = real_seconds;
-	uint32_t rss1 = real_seconds;
-
-	uint32_t gps0 = gps_pps;
-	uint32_t gps1 = gps_pps;
-
-	uint32_t ltc0 = ltc_timecode.seconds;
-	uint32_t ltc1 = ltc_timecode.seconds;
-
-	uint32_t hal_rtc = halGetCounterValue();
-	uint32_t hal_gps = halGetCounterValue();
-	uint32_t hal_rss = halGetCounterValue();
-	uint32_t hal_ltc = halGetCounterValue();
-
-	uint32_t hal_master = halGetCounterValue();
-
-	uint32_t hal_rtc_diff = 0;
-	uint32_t hal_rss_diff = 0;
-	uint32_t hal_gps_diff = 0;
-	uint32_t hal_ltc_diff = 0;
-
-	int master_changed = 0;
-
-	chprintf(prnt, "rtc,rss,ltc,gps,rtc_diff,rss_diff,ltc_diff,gps_diff,pps_diff\n\r");
 	st7565_clear(&ST7565D1);
 	while( 1 )
 	{
-		// get all counters
-		rtcGetTimeI(&RTCD1, &rtc1);
-		gps1 = gps_pps;
-		ltc1 = ltc_timecode.seconds;
-		rss1 = real_seconds;
-
-		// calculate all crap
-		if ( gps0 != gps1 )
 		{
-			hal_gps = halGetCounterValue();
-			gps0 = gps1;
-		}
-
-		if ( ltc0 != ltc1 )
-		{
-			hal_ltc = halGetCounterValue();
-			ltc0 = ltc1;
-		}
-
-		if ( rtc0.tv_time != rtc1.tv_time )
-		{
-			hal_rtc = halGetCounterValue();
-			rtc0.tv_time = rtc1.tv_time;
-		}
-
-		if ( rss1 != rss0 )
-		{
-			hal_rss = halGetCounterValue();
-			rss0 = rss1;
-			master_changed = 1;
-		}
-
-		if ( master_changed )
-		{
-			hal_rtc_diff = hal_master - hal_rtc;
-			hal_gps_diff = hal_master - hal_gps;
-			hal_ltc_diff = hal_master - hal_ltc;
-			hal_rss_diff = hal_master - hal_rss;
-			hal_master = hal_rss;
-
-			chprintf(prnt, "%d,%d,%d,%d,%d,%d,%d,%d,%d\n\r",
-					rtc1.tv_time, rss1, ltc1, gps1,
-					hal_rtc_diff, hal_rss_diff, hal_ltc_diff, hal_gps_diff, gps_pps_diffCount);
-
 			if ( !is_btn_0_pressed() )
 			{
 				st7565_drawstring(&ST7565D1, 0, 0, "s");
@@ -264,11 +453,8 @@ int main(void)
 				st7565_display(&ST7565D1);
 				st7565_clear(&ST7565D1);
 			}
-
-			master_changed = 0;
-			palTogglePad(GPIOB, GPIOB_LED2);
 		}
-		palTogglePad(GPIOB, GPIOB_LED1);
 	}
+#endif // 0
 }
 

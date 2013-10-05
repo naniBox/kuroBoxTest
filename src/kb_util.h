@@ -20,13 +20,16 @@
 
 */
 
+//----------------------------------------------------------------------------
 #ifndef _naniBox_kuroBox_nb_util
 #define _naniBox_kuroBox_nb_util
 
+//----------------------------------------------------------------------------
 #include "ch.h"
 #include "hal.h"
 
 //----------------------------------------------------------------------------
+// handy for my driver structs
 typedef struct PortPad PortPad;
 struct PortPad
 {
@@ -35,6 +38,7 @@ struct PortPad
 };
 
 //----------------------------------------------------------------------------
+// used for the panic function
 typedef enum
 {
 	no_panic	= 0,
@@ -57,10 +61,13 @@ typedef enum
 		extern char STATIC_ASSERTION__##msg[(expr)?1:2]
 #endif /* #ifdef __GNUC__ */
 
+#define ASSERT(expr,where,msg) chDbgAssert(expr, where, msg)
+
 //----------------------------------------------------------------------------
 #define KB_OK				0
 #define KB_NOT_OK			1
-#define KB_UNKNOWN_ERR		255
+#define KB_ERR_VALUE		2
+#define KB_ERR_UNKNOWN		255
 
 //-----------------------------------------------------------------------------
 uint8_t  calc_checksum_8( uint8_t * buf, uint16_t buf_size );

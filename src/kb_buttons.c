@@ -22,6 +22,7 @@
 
 #include "kb_buttons.h"
 #include "kb_util.h"
+#include "kb_gpio.h"
 
 static bool_t btn_0_state;
 static bool_t btn_1_state;
@@ -48,6 +49,8 @@ void btn_1_exti_cb(EXTDriver *extp, expchannel_t channel)
 	(void)extp;
 	(void)channel;
 	btn_1_state=palReadPad(GPIOA, GPIOA_BTN1);
+	if ( is_btn_1_pressed() )
+		kbg_setLCDBacklight(!kbg_getLCDBacklight() );
 }
 
 //-----------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 # List of all the board related files.
-BOARDSRC = src/cfg/board.c
+BOARDSRC = src/board/board.c
 
 # Required include directories
-BOARDINC = src/cfg
+BOARDINC = src/board

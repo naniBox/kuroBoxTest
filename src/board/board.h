@@ -84,7 +84,7 @@
 #define GPIOB_USART1_TX             6
 #define GPIOB_USART1_RX             7
 #define GPIOB__B08                  8
-#define GPIOB__B09                  9
+#define GPIOB_L1_PWR                9
 #define GPIOB_L1_I2C2_SCL           10
 #define GPIOB_L1_I2C2_SDA           11
 #define GPIOB__B12                  12
@@ -115,12 +115,12 @@
 #define GPIOD_L1_VN_NRST            3
 #define GPIOD_SD_DET                4
 #define GPIOD_SD_WP                 5
-#define GPIOD_SERIAL2_PWR           6
-#define GPIOD_SERIAL2_VALID         7
-#define GPIOD_SERIAL2_OC            8
-#define GPIOD_SERIAL1_PWR           9
-#define GPIOD_SERIAL1_VALID         10
-#define GPIOD_SERIAL1_OC            11
+#define GPIOD_SERIAL1_PWR           6
+#define GPIOD_SERIAL1_VALID         7
+#define GPIOD_SERIAL1_OC            8
+#define GPIOD_SERIAL2_PWR           9
+#define GPIOD_SERIAL2_VALID         10
+#define GPIOD_SERIAL2_OC            11
 #define GPIOD_LCD_LED_DRIVE         12
 #define GPIOD__D13                  13
 #define GPIOD__D14                  14
@@ -379,7 +379,7 @@
                                      PIN_MODE_ALTERNATE(GPIOB_USART1_TX) |  \
                                      PIN_MODE_ALTERNATE(GPIOB_USART1_RX) |  \
                                      PIN_MODE_INPUT(GPIOB__B08) |           \
-                                     PIN_MODE_INPUT(GPIOB__B09) |           \
+                                     PIN_MODE_OUTPUT(GPIOB_L1_PWR) |           \
                                      PIN_MODE_ALTERNATE(GPIOB_L1_I2C2_SCL) |\
                                      PIN_MODE_ALTERNATE(GPIOB_L1_I2C2_SDA) |\
                                      PIN_MODE_INPUT(GPIOB__B12) |           \
@@ -395,7 +395,7 @@
                                      PIN_OTYPE_PUSHPULL(GPIOB_USART1_TX) |  \
                                      PIN_OTYPE_PUSHPULL(GPIOB_USART1_RX) |  \
                                      PIN_OTYPE_PUSHPULL(GPIOB__B08) |       \
-                                     PIN_OTYPE_PUSHPULL(GPIOB__B09) |       \
+                                     PIN_OTYPE_PUSHPULL(GPIOB_L1_PWR) |       \
                                      PIN_OTYPE_OPENDRAIN(GPIOB_L1_I2C2_SCL) |\
                                      PIN_OTYPE_OPENDRAIN(GPIOB_L1_I2C2_SDA) |\
                                      PIN_OTYPE_PUSHPULL(GPIOB__B12) |       \
@@ -411,7 +411,7 @@
                                      PIN_OSPEED_100M(GPIOB_USART1_TX) |     \
                                      PIN_OSPEED_100M(GPIOB_USART1_RX) |     \
                                      PIN_OSPEED_2M(GPIOB__B08) |            \
-                                     PIN_OSPEED_2M(GPIOB__B09) |            \
+                                     PIN_OSPEED_2M(GPIOB_L1_PWR) |            \
                                      PIN_OSPEED_100M(GPIOB_L1_I2C2_SCL) |   \
                                      PIN_OSPEED_100M(GPIOB_L1_I2C2_SDA) |   \
                                      PIN_OSPEED_2M(GPIOB__B12) |            \
@@ -427,7 +427,7 @@
                                      PIN_PUPDR_PULLUP(GPIOB_USART1_TX) |    \
                                      PIN_PUPDR_PULLUP(GPIOB_USART1_RX) |    \
                                      PIN_PUPDR_PULLUP(GPIOB__B08) |         \
-                                     PIN_PUPDR_PULLUP(GPIOB__B09) |         \
+                                     PIN_PUPDR_PULLUP(GPIOB_L1_PWR) |         \
                                      PIN_PUPDR_PULLUP(GPIOB_L1_I2C2_SCL) |  \
                                      PIN_PUPDR_PULLUP(GPIOB_L1_I2C2_SDA) |  \
                                      PIN_PUPDR_PULLUP(GPIOB__B12) |         \
@@ -443,7 +443,7 @@
                                      PIN_ODR_HIGH(GPIOB_USART1_TX) |        \
                                      PIN_ODR_HIGH(GPIOB_USART1_RX) |        \
                                      PIN_ODR_HIGH(GPIOB__B08) |             \
-                                     PIN_ODR_HIGH(GPIOB__B09) |             \
+                                     PIN_ODR_HIGH(GPIOB_L1_PWR) |             \
                                      PIN_ODR_HIGH(GPIOB_L1_I2C2_SCL) |      \
                                      PIN_ODR_HIGH(GPIOB_L1_I2C2_SDA) |      \
                                      PIN_ODR_HIGH(GPIOB__B12) |             \
@@ -459,7 +459,7 @@
                                      PIN_AFIO_AF(GPIOB_USART1_TX, 7) |      \
                                      PIN_AFIO_AF(GPIOB_USART1_RX, 7))
 #define VAL_GPIOB_AFRH              (PIN_AFIO_AF(GPIOB__B08, 0) |           \
-                                     PIN_AFIO_AF(GPIOB__B09, 0) |           \
+                                     PIN_AFIO_AF(GPIOB_L1_PWR, 0) |           \
                                      PIN_AFIO_AF(GPIOB_L1_I2C2_SCL, 4) |    \
                                      PIN_AFIO_AF(GPIOB_L1_I2C2_SDA, 4) |    \
                                      PIN_AFIO_AF(GPIOB__B12, 0) |           \
@@ -492,7 +492,7 @@
                                      PIN_MODE_INPUT(GPIOC_L1_GPS_EXTINT0) | \
                                      PIN_MODE_INPUT(GPIOC_L1_TIMEPULSE) |   \
                                      PIN_MODE_INPUT(GPIOC__C04) |           \
-                                     PIN_MODE_OUTPUT(GPIOC__C05) |           \
+                                     PIN_MODE_INPUT(GPIOC__C05) |           \
                                      PIN_MODE_ALTERNATE(GPIOC_L1_USART6_TX) |\
                                      PIN_MODE_ALTERNATE(GPIOC_L1_USART6_RX) |\
                                      PIN_MODE_ALTERNATE(GPIOC_SDIO_D0) |    \
@@ -524,7 +524,7 @@
                                      PIN_OSPEED_2M(GPIOC_L1_GPS_EXTINT0) |  \
                                      PIN_OSPEED_2M(GPIOC_L1_TIMEPULSE) |    \
                                      PIN_OSPEED_2M(GPIOC__C04) |            \
-                                     PIN_OSPEED_100M(GPIOC__C05) |            \
+                                     PIN_OSPEED_2M(GPIOC__C05) |            \
                                      PIN_OSPEED_100M(GPIOC_L1_USART6_TX) |  \
                                      PIN_OSPEED_100M(GPIOC_L1_USART6_RX) |  \
                                      PIN_OSPEED_100M(GPIOC_SDIO_D0) |       \
@@ -664,7 +664,7 @@
                                      PIN_PUPDR_PULLUP(GPIOD_SERIAL1_PWR) |  \
                                      PIN_PUPDR_PULLUP(GPIOD_SERIAL1_VALID) |\
                                      PIN_PUPDR_PULLUP(GPIOD_SERIAL1_OC) |   \
-                                     PIN_PUPDR_PULLUP(GPIOD_LCD_LED_DRIVE) |\
+                                     PIN_PUPDR_PULLDOWN(GPIOD_LCD_LED_DRIVE) |\
                                      PIN_PUPDR_PULLUP(GPIOD__D13) |         \
                                      PIN_PUPDR_PULLUP(GPIOD__D14) |         \
                                      PIN_PUPDR_PULLUP(GPIOD__D15))
@@ -680,7 +680,7 @@
                                      PIN_ODR_HIGH(GPIOD_SERIAL1_PWR) |      \
                                      PIN_ODR_HIGH(GPIOD_SERIAL1_VALID) |    \
                                      PIN_ODR_HIGH(GPIOD_SERIAL1_OC) |       \
-                                     PIN_ODR_LOW(GPIOD_LCD_LED_DRIVE) |     \
+                                     PIN_ODR_HIGH(GPIOD_LCD_LED_DRIVE) |     \
                                      PIN_ODR_HIGH(GPIOD__D13) |             \
                                      PIN_ODR_HIGH(GPIOD__D14) |             \
                                      PIN_ODR_HIGH(GPIOD__D15))
@@ -728,8 +728,8 @@
                                      PIN_MODE_OUTPUT(GPIOE_LCD_NSS) |       \
                                      PIN_MODE_INPUT(GPIOE__E05) |           \
                                      PIN_MODE_INPUT(GPIOE__E06) |           \
-                                     PIN_MODE_OUTPUT(GPIOE__E07) |           \
-                                     PIN_MODE_OUTPUT(GPIOE__E08) |           \
+                                     PIN_MODE_INPUT(GPIOE__E07) |           \
+                                     PIN_MODE_INPUT(GPIOE__E08) |           \
                                      PIN_MODE_INPUT(GPIOE_L1_VN_SYNC_OUT) | \
                                      PIN_MODE_INPUT(GPIOE__E10) |           \
                                      PIN_MODE_INPUT(GPIOE__E11) |           \
@@ -760,8 +760,8 @@
                                      PIN_OSPEED_100M(GPIOE_LCD_NSS) |       \
                                      PIN_OSPEED_2M(GPIOE__E05) |            \
                                      PIN_OSPEED_2M(GPIOE__E06) |            \
-                                     PIN_OSPEED_100M(GPIOE__E07) |            \
-                                     PIN_OSPEED_100M(GPIOE__E08) |            \
+                                     PIN_OSPEED_2M(GPIOE__E07) |            \
+                                     PIN_OSPEED_2M(GPIOE__E08) |            \
                                      PIN_OSPEED_100M(GPIOE_L1_VN_SYNC_OUT) |\
                                      PIN_OSPEED_2M(GPIOE__E10) |            \
                                      PIN_OSPEED_2M(GPIOE__E11) |            \
